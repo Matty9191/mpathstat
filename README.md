@@ -1,7 +1,7 @@
 # mpathstat
 
 The mpathstat utility provides device mapper statistics for each mapper device as well as the SCSI block devices that represent the paths to this device. Here is some sampel output to illustrate what this utility does:
-
+<pre>
 $ mpathstat.py
  Device Name                                  Reads     Writes    KBytesR/S  KBytesW/S  Await   
  mpatha                                       8.00      0.00      4096.00    0.00       4.88    
@@ -14,3 +14,4 @@ $ mpathstat.py
  |- sdaas                                     1.00      0.00      512.00     0.00       5.00    
  |- sdaef                                     1.00      0.00      512.00     0.00       5.00    
  .......
+</pre>
