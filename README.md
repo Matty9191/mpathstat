@@ -4,7 +4,7 @@ The mpathstat utility provides device mapper statistics for each mapper device a
 
 ## Usage
 <pre>
-$ mpathstat.py
+$ mpathstat
  Device Name                                  Reads     Writes    KBytesR/S  KBytesW/S  Await   
  mpatha                                       8.00      0.00      4096.00    0.00       4.88    
  |- sdcl                                      1.00      0.00      512.00     0.00       4.00    
