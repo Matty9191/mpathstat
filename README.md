@@ -1,6 +1,6 @@
 ## Overview
 
-The mpathstat utility provides device mapper statistics for each mapper device as well as the SCSI block devices that represent the paths to this device. Here is some sample output to illustrate the utility in action:
+The mpathstat utility provides device mapper statistics for each mapper device as well as the SCSI block devices that represent the paths to this device.
 
 ## Usage
 <pre>
