@@ -108,8 +108,8 @@ def parse_devs():
 
     # Check the string to see if it contains "dm-". If it does we located
     # a device mapper entry that we need to save. If we don't encounter a
-    # dm line we need to locate the block devices that are part of that
-    # mapper device. These entries contain "|-" or "`-".
+    # dm line we need to locate the block devices that are part of the
+    # mapper device we saved. These entries contain "|-" or "`-".
     for line in subproc.stdout.readlines():
         if ' dm-' in line :
             dmname = line.split()[2]
