@@ -4,14 +4,14 @@
 #
 # Author: Matty < matty91 at gmail dot com >
 #
-# Current Version: 1.0
+# Current Version: 1.1
 #
 # Revision History:
 #
-# Version 1.0
+# Version 1.1
 #     Original release
 #
-# Last Updated: 09-12-2016
+# Last Updated: 10-24-2016
 #
 # Purpose: Displays I/O statistics for each device mapper device as well as the
 #          individual block devices that represent each path to that mapper device.
@@ -61,112 +61,135 @@ import subprocess
 # mapper devices.
 dmname = ""
 blockdevice = ""
+original_sigint = ""
 blockdevices = collections.defaultdict(dict)
 mapperdevices = collections.defaultdict(dict)
 multipath = "/sbin/multipath -ll"
 iostat = "/usr/bin/iostat -xkyz 1 1"
 
+
 # Catch SIGINT so we can exit with grace.
 def gexit(signum, frame):
+    """
+       Function to call if a SIGINT is received
+    """
     signal.signal(signal.SIGINT, original_sigint)
     sys.exit(1)
 
+
 def initcollections():
-	for mdev in mapperdevices:
-		mapperdevices[mdev]['await'] = 0
-		mapperdevices[mdev]['reads'] = 0
-		mapperdevices[mdev]['writes'] = 0
-		mapperdevices[mdev]['bytes_read'] = 0
-		mapperdevices[mdev]['bytes_written'] = 0
+    """
+       Initialize the read/write metrics to 0
+    """
+    for mdev in mapperdevices:
+        mapperdevices[mdev]['await'] = 0
+        mapperdevices[mdev]['reads'] = 0
+        mapperdevices[mdev]['writes'] = 0
+        mapperdevices[mdev]['bytes_read'] = 0
+        mapperdevices[mdev]['bytes_written'] = 0
 	
-	for bdev in blockdevices:
-		blockdevices[bdev]['await'] = 0
-		blockdevices[bdev]['reads'] = 0
-		blockdevices[bdev]['writes'] = 0
-		blockdevices[bdev]['bytes_read'] = 0
-		blockdevices[bdev]['bytes_written'] = 0
+    for bdev in blockdevices:
+        blockdevices[bdev]['await'] = 0
+        blockdevices[bdev]['reads'] = 0
+        blockdevices[bdev]['writes'] = 0
+        blockdevices[bdev]['bytes_read'] = 0
+        blockdevices[bdev]['bytes_written'] = 0
+
+def parse_devs():
+    """
+       Parse multipath -ll to get the list of mapper and sd devices
+    """
+    original_sigint = signal.getsignal(signal.SIGINT)
+    signal.signal(signal.SIGINT, gexit)
+
+    try:
+        subproc = subprocess.Popen(multipath, shell=True, stdout=subprocess.PIPE)
+    except OSError:
+        print "Error opening the multipath utility."
+        print "Command executed: " + multipath
+        sys.exit(1)
+
+    # Check for dm- in the string and get the device-mapper device. Then
+    # iterate over the individual block devices associated with that device.
+    for line in iter(subproc.stdout.readline, ''):
+        if ' dm-' in line :
+            dmname = line.split()[2]
+            mapperdevices[dmname]['pretty_name'] = line.split()[0]
+        elif ' |-' in line or ' `-' in line :
+            blockdevices[line.split()[-5]]['mapper_device'] = dmname
+
+    # Set the counters to zero.
+    initcollections()
 
 
-# Create a signal handler for SIGINT
-original_sigint = signal.getsignal(signal.SIGINT)
-signal.signal(signal.SIGINT, gexit)
+def process_io_stats():
+    """
+       Iterates over iostat data and updates the device mapper array
+       Iostat format:
+       Device:         rrqm/s   wrqm/s     r/s     w/s    rkB/s    wkB/s avgrq-sz avgqu-sz   await  svctm  %util
+       sda               0.00     1.00    0.00    3.00     0.00    12.00     8.00     0.00    0.00   0.00   0.00
+    """
 
-try:
-	subproc = subprocess.Popen(multipath, shell=True, stdout=subprocess.PIPE)
-except OSError:
-	print "Error opening the multipath utility."
-	print "Command executed: " + multipath
-	sys.exit(1)
-
-# Check for dm- in the string and get the device-mapper device. Then
-# iterate over the individual block devices associated with that device.
-for line in iter(subproc.stdout.readline, ''):
-	if ' dm-' in line :
-		prettyname = line.split()[0]
-		dmname = line.split()[2]
-		mapperdevices[dmname]['pretty_name'] = prettyname
-	elif ' |-' in line or ' `-' in line :
-		blockdevice = line.split()[-5]
-		blockdevices[blockdevice]['mapper_device'] = dmname
-
-	# Set the counters to zero.
-	initcollections()
-
-# Iostat format:
-# Device:         rrqm/s   wrqm/s     r/s     w/s    rkB/s    wkB/s avgrq-sz avgqu-sz   await  svctm  %util
-# sda               0.00     1.00    0.00    3.00     0.00    12.00     8.00     0.00    0.00   0.00   0.00
-
-# Iterate over the iostat output and update the counters
-while True:
-
-	print   "%-43s  %-8s  %-8s  %-9s  %-9s  %-8s" % ("Device Name", "Reads", "Writes", 
+    # Iterate over the iostat output and update the counters
+    while True:
+        print   "%-43s  %-8s  %-8s  %-9s  %-9s  %-8s" % ("Device Name", "Reads", "Writes", 
                                                      "KBytesR/S", "KBytesW/S", "Await")
 
-	try:
-		subproc = subprocess.Popen(iostat, shell=True, stdout=subprocess.PIPE)
-	except OSError:
-		print "Error opening the iostat utility."
-		print "Command executed: " + iostat
-		sys.exit(1)
+        try:
+            subproc = subprocess.Popen(iostat, shell=True, stdout=subprocess.PIPE)
+        except OSError:
+            print "Error opening the iostat utility."
+            print "Command executed: " + iostat
+            sys.exit(1)
 
-	for line in iter(subproc.stdout.readline, ''):
-		if "sd" in line:
-			blockdev = line.split()[0]
+        for line in iter(subproc.stdout.readline, ''):
+            if "sd" in line:
+                blockdev = line.split()[0]
+                if blockdev in blockdevices:
+                    blockdevices[blockdev]['await'] = float(line.split()[9])
+                    blockdevices[blockdev]['reads'] = float(line.split()[3])
+                    blockdevices[blockdev]['writes'] = float(line.split()[4])
+                    blockdevices[blockdev]['bytes_read'] = float(line.split()[5])
+                    blockdevices[blockdev]['bytes_written'] = float(line.split()[6])
+            elif "dm" in line:
+                mapperdev = line.split()[0]
+                if mapperdev in mapperdevices:
+                    mapperdevices[mapperdev]['await'] = float(line.split()[9])
+                    mapperdevices[mapperdev]['reads'] = float(line.split()[3])
+                    mapperdevices[mapperdev]['writes'] = float(line.split()[4])
+                    mapperdevices[mapperdev]['bytes_read'] = float(line.split()[5])
+                    mapperdevices[mapperdev]['bytes_written'] = float(line.split()[6])
 
-			if blockdev in blockdevices:
-				blockdevices[blockdev]['await'] = float(line.split()[9])
-				blockdevices[blockdev]['reads'] = float(line.split()[3])
-				blockdevices[blockdev]['writes'] = float(line.split()[4])
-				blockdevices[blockdev]['bytes_read'] = float(line.split()[5])
-				blockdevices[blockdev]['bytes_written'] = float(line.split()[6])
-		elif "dm" in line:
-			mapperdev = line.split()[0]
+        for mdev in mapperdevices:
+            if mapperdevices[mdev]['reads'] > 0 or mapperdevices[mdev]['writes'] > 0:
+                print   "%-43s  %-8.2f  %-8.2f  %-9.2f  %-9.2f  %-8.2f" % (mapperdevices[mdev]['pretty_name'],
+                                                                           mapperdevices[mdev]['reads'],
+                                                                           mapperdevices[mdev]['writes'],
+                                                                           mapperdevices[mdev]['bytes_read'],
+                                                                           mapperdevices[mdev]['bytes_written'],
+                                                                           mapperdevices[mdev]['await'])
 
-			if mapperdev in mapperdevices:
-				mapperdevices[mapperdev]['await'] = float(line.split()[9])
-				mapperdevices[mapperdev]['reads'] = float(line.split()[3])
-				mapperdevices[mapperdev]['writes'] = float(line.split()[4])
-				mapperdevices[mapperdev]['bytes_read'] = float(line.split()[5])
-				mapperdevices[mapperdev]['bytes_written'] = float(line.split()[6])
+                for bdev in blockdevices:
+                    if blockdevices[bdev]["mapper_device"] == mdev:
+                        print   "|- %-40s  %-8.2f  %-8.2f  %-9.2f  %-9.2f  %-8.2f" % (bdev,
+                                                                            blockdevices[bdev]['reads'],
+                                                                            blockdevices[bdev]['writes'],
+                                                                            blockdevices[bdev]['bytes_read'],
+                                                                            blockdevices[bdev]['bytes_written'],
+                                                                            blockdevices[bdev]['await'])
 
-	for mdev in mapperdevices:
-		if mapperdevices[mdev]['reads'] > 0 or mapperdevices[mdev]['writes'] > 0:
-			print   "%-43s  %-8.2f  %-8.2f  %-9.2f  %-9.2f  %-8.2f" % (mapperdevices[mdev]['pretty_name'],
-			                                               mapperdevices[mdev]['reads'],
-                                                                       mapperdevices[mdev]['writes'],
-                                                                       mapperdevices[mdev]['bytes_read'],
-                        mapperdevices[mdev]['bytes_written'],
-                        mapperdevices[mdev]['await'])
+    # Reset the counters to zero
+    initcollections()
+    print ""
 
-			for bdev in blockdevices:
-				if blockdevices[bdev]["mapper_device"] == mdev:
-					print   "|- %-40s  %-8.2f  %-8.2f  %-9.2f  %-9.2f  %-8.2f" % (bdev,
-                                                                        blockdevices[bdev]['reads'],
-                                                                        blockdevices[bdev]['writes'],
-                                                                        blockdevices[bdev]['bytes_read'],
-                                                                        blockdevices[bdev]['bytes_written'],
-                                                                        blockdevices[bdev]['await'])
 
-	# Reset the counters to zero
-	initcollections()
-	print ""
+def main():
+    """
+       Main function used for testing
+    """
+    parse_devs()
+    process_io_stats()
+
+
+if __name__ == "__main__":
+    main()
