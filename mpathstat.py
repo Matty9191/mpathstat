@@ -61,7 +61,6 @@ import subprocess
 # mapper devices.
 dmname = ""
 blockdevice = ""
-original_sigint = ""
 blockdevices = collections.defaultdict(dict)
 mapperdevices = collections.defaultdict(dict)
 multipath = "/sbin/multipath -ll"
@@ -73,7 +72,6 @@ def gexit(signum, frame):
     """
        Function to call if a SIGINT is received
     """
-    signal.signal(signal.SIGINT, original_sigint)
     sys.exit(1)
 
 
@@ -99,7 +97,6 @@ def parse_devs():
     """
        Parse multipath -ll to get the list of mapper and sd devices
     """
-    original_sigint = signal.getsignal(signal.SIGINT)
     signal.signal(signal.SIGINT, gexit)
 
     try:
@@ -109,9 +106,11 @@ def parse_devs():
         print "Command executed: " + multipath
         sys.exit(1)
 
-    # Check for dm- in the string and get the device-mapper device. Then
-    # iterate over the individual block devices associated with that device.
-    for line in iter(subproc.stdout.readline, ''):
+    # Check the string to see if it contains "dm-". If it does we located
+    # a device mapper entry that we need to save. If we don't encounter a
+    # dm line we need to locate the block devices that are part of that
+    # mapper device. These entries contain "|-" or "`-".
+    for line in subproc.stdout.readlines():
         if ' dm-' in line :
             dmname = line.split()[2]
             mapperdevices[dmname]['pretty_name'] = line.split()[0]
@@ -142,7 +141,7 @@ def process_io_stats():
             print "Command executed: " + iostat
             sys.exit(1)
 
-        for line in iter(subproc.stdout.readline, ''):
+        for line in subproc.stdout.readlines():
             if "sd" in line:
                 blockdev = line.split()[0]
                 if blockdev in blockdevices:
