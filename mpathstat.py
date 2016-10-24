@@ -185,7 +185,7 @@ def process_io_stats():
 
 def main():
     """
-       Main function used for testing
+       Main code block
     """
     parse_devs()
     process_io_stats()
